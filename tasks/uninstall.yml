@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2023 Slavi Pantaleev
+# SPDX-FileCopyrightText: 2025, 2026 Suguru Hirahara
+# SPDX-FileCopyrightText: 2026 spatterlight
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+---
+- name: Check existence of tinc systemd service
+  ansible.builtin.stat:
+    path: "{{ devture_systemd_docker_base_systemd_path }}/{{ tinc_identifier }}.service"
+  register: tinc_service_stat
+
+- name: Uninstall tinc systemd services and files
+  when: tinc_service_stat.stat.exists | bool
+  block:
+    - name: Ensure tinc systemd service is stopped
+      ansible.builtin.service:
+        name: "{{ tinc_identifier }}"
+        state: stopped
+        enabled: false
+        daemon_reload: true
+
+    - name: Ensure tinc systemd service does not exist
+      ansible.builtin.file:
+        path: "{{ devture_systemd_docker_base_systemd_path }}/{{ tinc_identifier }}.service"
+        state: absent
+
+    - name: Ensure tinc container network does not exist
+      when: tinc_container_network_deletion_enabled and tinc_container_network not in ['', 'host']
+      block:
+        - name: Ensure tinc container network does not exist via community.docker.docker_network
+          when: devture_systemd_docker_base_container_network_creation_method == 'ansible-module'
+          community.docker.docker_network:
+            name: "{{ tinc_container_network }}"
+            state: absent
+          register: tinc_network_deletion_result
+
+        - name: Ensure tinc container network does not exist via ansible.builtin.command
+          when: devture_systemd_docker_base_container_network_creation_method == 'command'
+          ansible.builtin.command:
+            cmd: >-
+              {{ devture_systemd_docker_base_host_command_docker }} network rm
+              {{ tinc_container_network }}
+          register: tinc_network_deletion_result
+          changed_when: tinc_container_network in tinc_network_deletion_result.stdout
+
+    - name: Ensure tinc path does not exist
+      ansible.builtin.file:
+        path: "{{ tinc_base_path }}"
+        state: absent

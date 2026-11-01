@@ -1,0 +1,16 @@
+{#
+SPDX-FileCopyrightText: 2024-2026 spatterlight
+
+SPDX-License-Identifier: AGPL-3.0-or-later
+#}
+{% for address in item.addresses | default([]) %}
+Address = {{ address }}
+{% endfor %}
+{% for subnet in item.subnets | default([]) %}
+Subnet = {{ subnet }}
+{% endfor %}
+{% if item.additional_configuration | default('') %}
+{{ item.additional_configuration }}
+{% endif %}
+
+{{ item.public_key }}

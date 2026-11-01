@@ -1,0 +1,139 @@
+# SPDX-FileCopyrightText: 2026 Slavi Pantaleev
+# SPDX-FileCopyrightText: 2026 spatterlight
+# SPDX-FileCopyrightText: 2026 Suguru Hirahara
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: requirements.yml
+    force: true
+driver:
+  name: docker
+platforms:
+  - name: tinc-${MOLECULE_DISTRO:-ubuntu2604}-default
+    image: "geerlingguy/docker-${MOLECULE_DISTRO:-ubuntu2604}-ansible:latest"
+    command: ${MOLECULE_DOCKER_COMMAND:-""}
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      # Docker inside the instance stores images via containerd. Its storage
+      # cannot use overlay on top of the instance's own overlay filesystem, so a
+      # volume puts it on a real filesystem.
+      - /var/lib/containerd
+    # Remove volumes along with the instance, so that local runs do not leave
+    # gigabytes behind.
+    keep_volumes: false
+    cgroupns_mode: host
+    privileged: true
+    pre_build_image: true
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      callback_result_format: yaml
+  inventory:
+    group_vars:
+      all:
+        # Helper variables
+        tinc_debug_service_enabled: false
+        tinc_restarts_check_enabled: true
+
+        # The RSA key pairs of the nodes below. prepare.yml generates them on the
+        # controller, in the scenario's ephemeral directory, because committed
+        # private keys would trip the detect-private-key hook.
+        tinc_molecule_keys_path: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/tinc-keys"
+
+        # The host directory mounted into the container through
+        # `tinc_container_additional_volumes_custom`, and the file placed in it by
+        # prepare.yml. Reading that file from inside the container is what
+        # proves the additional volumes reach the systemd unit rather than
+        # being merely declared in defaults/main.yml.
+        tinc_molecule_extra_volume_src: /tinc-molecule-extra
+        tinc_molecule_extra_volume_dst: /tinc-molecule-extra
+        tinc_molecule_extra_volume_marker: only-a-real-bind-mount-can-read-this
+        tinc_molecule_marker_filename: tinc-molecule-marker.txt
+
+        # A host file which prepare.yml leaves behind for a node that is not in
+        # `tinc_hosts`, and which the role has to delete.
+        tinc_molecule_unlisted_host_file: /tinc/config/hosts/revoked
+
+        # The tinc node that verify.yml starts next to the role's container, on
+        # the role's container network, to establish a real tunnel with it. The
+        # address behind it stands in for a network on the far side of a
+        # site-to-site link.
+        tinc_molecule_peer_name: tinc-molecule-peer
+        tinc_molecule_peer_path: /tinc-molecule-peer
+        tinc_molecule_peer_address: 10.255.0.2
+        tinc_molecule_peer_lan_address: 10.255.2.1
+
+        # Variables for tinc
+        #
+        # Deliberately not 1000: a uid that exists in the test image by accident
+        # would hide a directory the role left unreadable.
+        tinc_uid: 1717
+        tinc_gid: 1717
+
+        # Neither the role's defaults nor each other's, so that verify.yml can
+        # tell that each host port came from its own variable.
+        tinc_container_host_bind_port_tcp: "50655"
+        tinc_container_host_bind_port_udp: "51655"
+
+        tinc_container_additional_volumes_custom:
+          - type: bind
+            src: "{{ tinc_molecule_extra_volume_src }}"
+            dst: "{{ tinc_molecule_extra_volume_dst }}"
+            options: readonly
+
+        # Debug level 1 logs the connections, which also shows that the
+        # process arguments reach tincd.
+        tinc_process_extra_arguments_custom:
+          - --debug=1
+
+        tinc_name: molecule
+        tinc_private_key: "{{ lookup('ansible.builtin.file', tinc_molecule_keys_path ~ '/molecule.priv') }}"
+
+        # The role's node and the peer can reach each other by their container
+        # names on the role's network. The `nat` node has no addresses, so
+        # the default `tinc_connect_to` has to leave it out.
+        tinc_hosts:
+          - name: molecule
+            addresses:
+              - tinc
+            subnets:
+              - 10.255.0.1/32
+            public_key: "{{ lookup('ansible.builtin.file', tinc_molecule_keys_path ~ '/molecule.pub') }}"
+          - name: peer
+            addresses:
+              - "{{ tinc_molecule_peer_name }}"
+            subnets:
+              - "{{ tinc_molecule_peer_address }}/32"
+              - 10.255.2.0/24
+            public_key: "{{ lookup('ansible.builtin.file', tinc_molecule_keys_path ~ '/peer.pub') }}"
+          - name: nat
+            subnets:
+              - 10.255.0.3/32
+            public_key: "{{ lookup('ansible.builtin.file', tinc_molecule_keys_path ~ '/nat.pub') }}"
+
+        tinc_interface_addresses:
+          - 10.255.0.1/24
+        # The first route is already there through the interface address. It
+        # must not keep tinc-up from adding the second one.
+        tinc_interface_routes:
+          - 10.255.0.0/24
+          - 10.255.2.0/24
+
+        # Observable in the log: without it, tincd also listens on `::`.
+        tinc_additional_configuration: |
+          AddressFamily = ipv4
+
+        # Neither the role's default of UTC nor the test host's zone, so
+        # that the timezone the container ends up in can only have come from
+        # templates/env.j2.
+        tinc_environment_variables_tz: Asia/Tokyo
+  env:
+    # Workaround for https://github.com/ansible/molecule/issues/4391
+    ANSIBLE_ROLES_PATH: ${MOLECULE_PROJECT_DIRECTORY}/..:/.ansible/roles:/usr/share/ansible/roles:/etc/ansible/roles:~/.ansible/roles
+verifier:
+  name: ansible

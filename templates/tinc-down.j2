@@ -1,0 +1,12 @@
+{#
+SPDX-FileCopyrightText: 2024-2026 spatterlight
+
+SPDX-License-Identifier: AGPL-3.0-or-later
+#}
+#!/bin/sh
+
+{% if tinc_down_additional_commands %}
+{{ tinc_down_additional_commands }}
+
+{% endif %}
+ip link set "$INTERFACE" down
