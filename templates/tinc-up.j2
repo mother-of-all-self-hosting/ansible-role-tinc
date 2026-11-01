@@ -1,0 +1,19 @@
+{#
+SPDX-FileCopyrightText: 2024-2026 spatterlight
+
+SPDX-License-Identifier: AGPL-3.0-or-later
+#}
+#!/bin/sh
+set -e
+
+ip link set "$INTERFACE" up
+{% for address in tinc_interface_addresses %}
+ip address add {{ address }} dev "$INTERFACE"
+{% endfor %}
+{% for route in tinc_interface_routes %}
+ip route add {{ route }} dev "$INTERFACE"
+{% endfor %}
+{% if tinc_up_additional_commands %}
+
+{{ tinc_up_additional_commands }}
+{% endif %}

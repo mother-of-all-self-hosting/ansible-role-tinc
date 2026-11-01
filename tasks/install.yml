@@ -1,0 +1,160 @@
+# SPDX-FileCopyrightText: 2023 Slavi Pantaleev
+# SPDX-FileCopyrightText: 2026 Suguru Hirahara
+# SPDX-FileCopyrightText: 2024-2026 spatterlight
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+---
+- name: Ensure tinc paths exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0750"
+    owner: "{{ tinc_uid }}"
+    group: "{{ tinc_gid }}"
+  with_items:
+    - "{{ tinc_base_path }}"
+    - "{{ tinc_config_path }}"
+    - "{{ tinc_config_path }}/hosts"
+
+- name: Ensure tinc support files installed
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/{{ item }}.j2"
+    dest: "{{ tinc_base_path }}/{{ item }}"
+    mode: "0640"
+    owner: "{{ tinc_uid }}"
+    group: "{{ tinc_gid }}"
+  with_items:
+    - env
+  register: tinc_support_files_result
+
+# The scripts are executable by everyone, because tincd runs them as root inside the container,
+# which only has DAC_READ_SEARCH to get past the permissions of the files owned by tinc_uid.
+# tincd also warns about a private key file which is readable by anyone but its owner.
+- name: Ensure tinc configuration files installed
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/{{ item.name }}.j2"
+    dest: "{{ tinc_config_path }}/{{ item.name }}"
+    mode: "{{ item.mode }}"
+    owner: "{{ tinc_uid }}"
+    group: "{{ tinc_gid }}"
+  with_items:
+    - {name: tinc.conf, mode: "0640"}
+    - {name: rsa_key.priv, mode: "0600"}
+    - {name: tinc-up, mode: "0755"}
+    - {name: tinc-down, mode: "0755"}
+  register: tinc_config_files_result
+
+- name: Ensure tinc host files installed
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/host.j2"
+    dest: "{{ tinc_config_path }}/hosts/{{ item.name }}"
+    mode: "0640"
+    owner: "{{ tinc_uid }}"
+    group: "{{ tinc_gid }}"
+  loop: "{{ tinc_hosts }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: tinc_host_files_result
+
+- name: Find tinc host files
+  ansible.builtin.find:
+    paths: "{{ tinc_config_path }}/hosts"
+    file_type: any
+  register: tinc_host_files_found_result
+
+# tincd accepts connections from any node it has a host file for, so the files of nodes which are no longer listed have to go.
+- name: Ensure tinc host files of unlisted nodes do not exist
+  ansible.builtin.file:
+    path: "{{ tinc_config_path }}/hosts/{{ item }}"
+    state: absent
+  with_items: "{{ tinc_host_files_found_result.files | map(attribute='path') | map('basename') | list | difference(tinc_hosts | map(attribute='name') | list) }}"
+  register: tinc_host_files_removal_result
+
+- name: Run if self-building of tinc container image is not enabled
+  when: "not tinc_container_image_self_build | bool"
+  block:
+    - name: Ensure tinc container image is pulled via community.docker.docker_image_pull
+      when: devture_systemd_docker_base_container_image_pull_method == 'ansible-module'
+      community.docker.docker_image_pull:
+        name: "{{ tinc_container_image }}"
+        pull: always
+      register: tinc_container_image_pull_result_ansible_module
+      retries: "{{ devture_playbook_help_container_retries_count }}"
+      delay: "{{ devture_playbook_help_container_retries_delay }}"
+      until: tinc_container_image_pull_result_ansible_module is not failed
+
+    - name: Ensure tinc container image is pulled via ansible.builtin.command
+      when: devture_systemd_docker_base_container_image_pull_method == 'command'
+      ansible.builtin.command:
+        cmd: "{{ devture_systemd_docker_base_host_command_docker }} pull {{ tinc_container_image }}"
+      register: tinc_container_image_pull_result_command
+      retries: "{{ devture_playbook_help_container_retries_count }}"
+      delay: "{{ devture_playbook_help_container_retries_delay }}"
+      until: tinc_container_image_pull_result_command is not failed
+      changed_when: "'Downloaded newer image' in tinc_container_image_pull_result_command.stdout"
+
+- name: Run if self-building of tinc container image is enabled
+  when: "tinc_container_image_self_build | bool"
+  block:
+    - name: Ensure tinc repository is present on self-build
+      ansible.builtin.git:
+        repo: "{{ tinc_container_image_self_build_repo }}"
+        version: "{{ tinc_container_image_self_build_repo_version }}"
+        dest: "{{ tinc_container_image_self_build_src_files_path }}"
+        force: "yes"
+      register: tinc_git_pull_results
+
+    - name: Ensure tinc container image is built
+      community.docker.docker_image_build:
+        name: "{{ tinc_container_image_self_build_name }}"
+        dockerfile: Dockerfile
+        path: "{{ tinc_container_image_self_build_src_files_path }}"
+        pull: true
+        rebuild: "{{ 'always' if tinc_git_pull_results.changed | bool else 'never' }}"
+      register: tinc_container_image_build_result
+
+- name: Ensure tinc container network is created
+  when: tinc_container_network not in ['', 'host']
+  block:
+    - name: Ensure tinc container network is created via community.docker.docker_network
+      when: devture_systemd_docker_base_container_network_creation_method == 'ansible-module'
+      community.docker.docker_network:
+        enable_ipv6: "{{ devture_systemd_docker_base_ipv6_enabled }}"
+        name: "{{ tinc_container_network }}"
+        driver: bridge
+        driver_options: "{{ devture_systemd_docker_base_container_networks_driver_options }}"
+      register: tinc_network_creation_result
+
+    - name: Ensure tinc container network is created via ansible.builtin.command
+      when: devture_systemd_docker_base_container_network_creation_method == 'command'
+      ansible.builtin.command:
+        cmd: >-
+          {{ devture_systemd_docker_base_host_command_docker }} network create
+          {% if devture_systemd_docker_base_ipv6_enabled %}--ipv6{% endif %}
+          {{ devture_systemd_docker_base_container_networks_driver_options_string }}
+          {{ tinc_container_network }}
+      register: tinc_network_creation_result
+      changed_when: tinc_network_creation_result.rc == 0
+      failed_when: tinc_network_creation_result.rc != 0 and 'already exists' not in tinc_network_creation_result.stderr
+
+- name: Ensure tinc systemd service is present
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/systemd/tinc.service.j2"
+    dest: "{{ devture_systemd_docker_base_systemd_path }}/{{ tinc_identifier }}.service"
+    mode: "0644"
+  register: tinc_systemd_service_result
+
+- name: Determine whether tinc needs a restart
+  ansible.builtin.set_fact:
+    tinc_restart_necessary: >-
+      {{
+        tinc_support_files_result.changed | default(false)
+        or tinc_config_files_result.changed | default(false)
+        or tinc_host_files_result.changed | default(false)
+        or tinc_host_files_removal_result.changed | default(false)
+        or tinc_systemd_service_result.changed | default(false)
+        or tinc_container_image_pull_result_ansible_module.changed | default(false)
+        or tinc_container_image_pull_result_command.changed | default(false)
+        or tinc_container_image_build_result.changed | default(false)
+      }}

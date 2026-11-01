@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: 2026 Slavi Pantaleev
+# SPDX-FileCopyrightText: 2026 spatterlight
+# SPDX-FileCopyrightText: 2026 Suguru Hirahara
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+---
+- name: Prepare tinc Molecule tests
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Ensure apt cache is updated for tinc Molecule tests preparation
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 600
+      when: ansible_facts["os_family"] == 'Debian'
+
+    - name: Ensure required packages are installed for tinc Molecule tests preparation
+      ansible.builtin.package:
+        name:
+          # Used by the community.docker modules the role runs.
+          - python3-requests
+        state: present
+
+    - name: Ensure Docker is installed for tinc Molecule tests preparation
+      ansible.builtin.include_role:
+        name: ansible-role-docker
+
+    # The private keys never leave the controller and the instance. The
+    # inventory reads them with `lookup('file', ...)`, which runs on the
+    # controller, so that is where they are generated.
+    - name: Ensure the key pairs exist for tinc Molecule tests
+      delegate_to: localhost
+      become: false
+      run_once: true
+      block:
+        - name: Ensure the key directory exists for tinc Molecule tests
+          ansible.builtin.file:
+            path: "{{ tinc_molecule_keys_path }}"
+            state: directory
+            mode: "0700"
+
+        - name: Ensure the RSA private keys exist for tinc Molecule tests
+          ansible.builtin.command:
+            cmd: openssl genrsa -out {{ tinc_molecule_keys_path }}/{{ item }}.priv 2048
+            creates: "{{ tinc_molecule_keys_path }}/{{ item }}.priv"
+          loop: [molecule, peer, nat]
+
+        - name: Ensure the RSA public keys exist for tinc Molecule tests
+          ansible.builtin.command:
+            cmd: openssl rsa -in {{ tinc_molecule_keys_path }}/{{ item }}.priv -pubout -out {{ tinc_molecule_keys_path }}/{{ item }}.pub
+            creates: "{{ tinc_molecule_keys_path }}/{{ item }}.pub"
+          loop: [molecule, peer, nat]
+
+    # Bind-mounted into the tinc container through
+    # `tinc_container_additional_volumes_custom`. The role does not create the source
+    # of an additional volume, so it has to exist before the container is
+    # created, or `docker create` refuses the bind. verify.yml reads the marker
+    # file back from inside the container, which only works if the systemd unit
+    # really carries the additional volumes.
+    - name: Ensure the additional volume directory exists for tinc Molecule tests
+      ansible.builtin.file:
+        path: "{{ tinc_molecule_extra_volume_src }}"
+        state: directory
+        mode: "0755"
+
+    - name: Ensure a marker file exists in the tinc Molecule additional volume
+      ansible.builtin.copy:
+        content: "{{ tinc_molecule_extra_volume_marker }}\n"
+        dest: "{{ tinc_molecule_extra_volume_src }}/{{ tinc_molecule_marker_filename }}"
+        mode: "0644"
+
+    # The host file of a node which is not in `tinc_hosts`, as if it had been
+    # removed from the network. tincd would still accept connections from it.
+    - name: Ensure the hosts directory exists for tinc Molecule tests
+      ansible.builtin.file:
+        path: "{{ tinc_molecule_unlisted_host_file | dirname }}"
+        state: directory
+        mode: "0755"
+
+    - name: Ensure a host file of an unlisted node exists for tinc Molecule tests
+      ansible.builtin.copy:
+        content: "Subnet = 10.255.0.99/32\n"
+        dest: "{{ tinc_molecule_unlisted_host_file }}"
+        mode: "0644"

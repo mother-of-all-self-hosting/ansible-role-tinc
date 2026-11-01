@@ -1,0 +1,110 @@
+# SPDX-FileCopyrightText: 2025, 2026 Slavi Pantaleev
+# SPDX-FileCopyrightText: 2026 spatterlight
+#
+# SPDX-License-Identifier: Apache-2.0
+
+---
+name: Release container image
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write  # to push tags
+  packages: write
+
+jobs:
+  release:
+    name: Build, publish and tag
+    runs-on: ubuntu-latest
+    # A manual run from another branch must not publish images or tags.
+    if: github.ref == 'refs/heads/main'
+
+    # Tag numbers are derived from the tags that already exist, so two runs
+    # must not compute them simultaneously - they would both arrive at the same
+    # number. Runs are queued rather than cancelled, so that every commit
+    # deserving a release still gets one.
+    concurrency:
+      group: release-image
+      cancel-in-progress: false
+
+    steps:
+      # The full history and all tags, since we compare against the previous release.
+      - name: Check out
+        uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Determine the next image tag
+        id: tag
+        run: |
+          tag="$(bin/compute-next-image-tag.sh)"
+          if [ -z "$tag" ]; then
+            echo 'No image release is needed for this commit'
+            exit 0
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        if: steps.tag.outputs.tag != ''
+        uses: docker/setup-buildx-action@v4.4.1
+
+      # Smoke-test before publishing anything.
+      - name: Build for the local platform
+        if: steps.tag.outputs.tag != ''
+        uses: docker/build-push-action@v7.4.0
+        with:
+          load: true
+          tags: tinc:release
+          context: .
+          file: ./Dockerfile
+
+      - name: Smoke-test
+        if: steps.tag.outputs.tag != ''
+        run: ./bin/smoke-test.sh tinc:release
+
+      - name: Login to ghcr.io
+        if: steps.tag.outputs.tag != ''
+        uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        if: steps.tag.outputs.tag != ''
+        id: meta
+        uses: docker/metadata-action@v6.2.0
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}
+          # The first enabled tag becomes the `org.opencontainers.image.version` label.
+          tags: |
+            type=raw,value=${{ steps.tag.outputs.tag }}
+            type=raw,value=latest
+
+      - name: Build and push
+        if: steps.tag.outputs.tag != ''
+        uses: docker/build-push-action@v7.4.0
+        with:
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          context: .
+          file: ./Dockerfile
+
+      # Only after the image got published, since consumers (Renovate) watch
+      # for new tags. Tags pushed with GITHUB_TOKEN do not trigger workflow runs.
+      - name: Create and push the tag
+        if: steps.tag.outputs.tag != ''
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git tag "$TAG"
+          git push origin "refs/tags/$TAG"

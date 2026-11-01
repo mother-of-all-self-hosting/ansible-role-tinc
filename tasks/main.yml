@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2023 Slavi Pantaleev
+# SPDX-FileCopyrightText: 2025, 2026 Suguru Hirahara
+# SPDX-FileCopyrightText: 2026 spatterlight
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+---
+- name: Perform tinc installation tasks
+  when: tinc_enabled | bool
+  tags:
+    - setup-all
+    - setup-tinc
+    - install-all
+    - install-tinc
+  block:
+    - name: Validate tinc configuration
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/validate_config.yml"
+    - name: Install tinc
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/install.yml"
+
+- name: Perform tinc uninstallation tasks
+  when: not tinc_enabled | bool
+  tags:
+    - setup-all
+    - setup-tinc
+  block:
+    - name: Uninstall tinc
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/uninstall.yml"

@@ -1,0 +1,227 @@
+# SPDX-FileCopyrightText: 2020 Scott Crossen
+# SPDX-FileCopyrightText: 2020-2025 Slavi Pantaleev
+# SPDX-FileCopyrightText: 2021 Ahmad Haghighi
+# SPDX-FileCopyrightText: 2021, 2022 MDAD project contributors
+# SPDX-FileCopyrightText: 2022 Marko Weltzer
+# SPDX-FileCopyrightText: 2022-2024 Nikita Chernyi
+# SPDX-FileCopyrightText: 2023 Samuel Meenzen
+# SPDX-FileCopyrightText: 2024 Sergio Durigan Junior
+# SPDX-FileCopyrightText: 2025 MASH project contributors
+# SPDX-FileCopyrightText: 2025, 2026 Suguru Hirahara
+# SPDX-FileCopyrightText: 2024-2026 spatterlight
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+---
+# Project source code URL: https://github.com/gsliepen/tinc
+
+tinc_enabled: true
+
+tinc_identifier: tinc
+tinc_base_path: "/{{ tinc_identifier }}"
+tinc_config_path: "{{ tinc_base_path }}/config"
+
+# The container image is built from the `Dockerfile` of this role's repository, and published with tags
+# made of the tinc version and an image release number (see `bin/compute-next-image-tag.sh`).
+# renovate: datasource=docker depName=ghcr.io/mother-of-all-self-hosting/ansible-role-tinc versioning=loose
+tinc_version: 1.0.37-0
+
+tinc_uid: ""
+tinc_gid: ""
+
+tinc_container_image: "{{ tinc_container_image_registry_prefix }}mother-of-all-self-hosting/ansible-role-tinc:{{ tinc_container_image_tag }}"
+tinc_container_image_tag: "{{ tinc_version }}"
+tinc_container_image_registry_prefix: "{{ tinc_container_image_registry_prefix_upstream }}"
+tinc_container_image_registry_prefix_upstream: "{{ tinc_container_image_registry_prefix_upstream_default }}"
+tinc_container_image_registry_prefix_upstream_default: ghcr.io/
+
+# Self-building checks out this role's repository at the tag the image is published as, and builds its `Dockerfile`.
+tinc_container_image_self_build: false
+tinc_container_image_self_build_name: "mother-of-all-self-hosting/ansible-role-tinc:{{ tinc_container_image_self_build_repo_version }}"
+tinc_container_image_self_build_repo: "https://github.com/mother-of-all-self-hosting/ansible-role-tinc.git"
+tinc_container_image_self_build_repo_version: "{{ tinc_container_image_tag }}"
+tinc_container_image_self_build_src_files_path: "{{ tinc_base_path }}/docker-src"
+
+# The base container network. It will be auto-created by this role if it doesn't exist already.
+#
+# The VPN interface is created in the network namespace of the container, so on a dedicated network only the container's own traffic can use it.
+# For the host (and the networks behind it) to use the VPN, set this to 'host', which creates the interface on the host itself.
+# With host networking no ports are published, so open them in the firewall yourself.
+tinc_container_network: "{{ tinc_identifier }}"
+
+# Control if the container network is deleted on uninstalling.
+tinc_container_network_deletion_enabled: true
+
+# Controls whether the tinc container exposes its port over TCP (tcp/655 in the container), which other nodes open meta connections to.
+#
+# Takes an "<ip>:<port>" or "<port>" value (e.g. "655"), or an empty string to not expose.
+tinc_container_host_bind_port_tcp: "{{ '655' if tinc_container_network != 'host' else '' }}"
+
+# Controls whether the tinc container exposes its port over UDP (udp/655 in the container), which carries the VPN packets.
+#
+# Takes an "<ip>:<port>" or "<port>" value (e.g. "655"), or an empty string to not expose.
+tinc_container_host_bind_port_udp: "{{ '655' if tinc_container_network != 'host' else '' }}"
+
+# A list of additional container networks that the container would be connected to.
+# The role does not create these networks, so make sure they already exist.
+tinc_container_additional_networks: "{{ tinc_container_additional_networks_auto + tinc_container_additional_networks_custom }}"
+tinc_container_additional_networks_auto: []
+tinc_container_additional_networks_custom: []
+
+# A list of additional "volumes" to mount in the container.
+# This list gets populated dynamically at runtime. You can provide a different default value,
+# if you wish to mount your own files into the container.
+# Contains definition objects like this: `{"type": "bind", "src": "/outside", "dst": "/inside", "options": "readonly"}.
+# See the `--mount` documentation for the `docker run` command.
+tinc_container_additional_volumes: "{{ tinc_container_additional_volumes_auto + tinc_container_additional_volumes_custom }}"
+tinc_container_additional_volumes_auto: []
+tinc_container_additional_volumes_custom: []
+
+# Specify the size of the container's tmpfs volume (/run)
+tinc_container_tmpfs_run_size: 128m
+
+# A list of extra arguments to pass to the container (`docker create` command)
+tinc_container_extra_arguments: "{{ tinc_container_extra_arguments_auto + tinc_container_extra_arguments_custom }}"
+tinc_container_extra_arguments_auto: []
+tinc_container_extra_arguments_custom: []
+
+# A list of extra arguments to pass to the process inside the container
+# Example: ['--debug=3']
+tinc_process_extra_arguments: "{{ tinc_process_extra_arguments_auto + tinc_process_extra_arguments_custom }}"
+tinc_process_extra_arguments_auto: []
+tinc_process_extra_arguments_custom: []
+
+# List of systemd services that the tinc systemd service depends on
+tinc_systemd_required_services_list: "{{ tinc_systemd_required_services_list_default + tinc_systemd_required_services_list_auto + tinc_systemd_required_services_list_custom }}"
+tinc_systemd_required_services_list_default: "{{ [devture_systemd_docker_base_docker_service_name] if devture_systemd_docker_base_docker_service_name else [] }}"
+tinc_systemd_required_services_list_auto: []
+tinc_systemd_required_services_list_custom: []
+
+# List of systemd services that the tinc systemd service wants
+tinc_systemd_wanted_services_list: "{{ tinc_systemd_wanted_services_list_default + tinc_systemd_wanted_services_list_auto + tinc_systemd_wanted_services_list_custom }}"
+tinc_systemd_wanted_services_list_default: []
+tinc_systemd_wanted_services_list_auto: []
+tinc_systemd_wanted_services_list_custom: []
+
+# Controls how long to wait for the container to stop gracefully before killing it.
+tinc_container_stop_grace_time_seconds: "{{ devture_systemd_docker_base_container_stop_grace_time_seconds }}"
+
+# Controls how long the pre-start cleanup should wait for stale container-name release
+# before failing startup explicitly.
+tinc_container_cleanup_timeout_seconds: "{{ devture_systemd_docker_base_container_cleanup_timeout_seconds }}"
+
+# Controls the delay between pre-start cleanup retries.
+tinc_container_cleanup_retry_delay_seconds: "{{ devture_systemd_docker_base_container_cleanup_retry_delay_seconds }}"
+
+# Shell command used in the systemd pre-start phase to deterministically remove a stale
+# container and wait until Docker releases its name.
+tinc_container_cleanup_command: |
+  i=0;
+  while [ "$i" -lt {{ tinc_container_cleanup_timeout_seconds }} ]; do
+  {{ devture_systemd_docker_base_host_command_docker }} stop -t {{ tinc_container_stop_grace_time_seconds }} {{ tinc_identifier }} >/dev/null 2>&1 || true;
+  {{ devture_systemd_docker_base_host_command_docker }} rm -f {{ tinc_identifier }} >/dev/null 2>&1 || true;
+  if {{ devture_systemd_docker_base_host_command_docker }} container inspect {{ tinc_identifier }} >/dev/null 2>&1; then
+  i=$((i + 1));
+  sleep {{ tinc_container_cleanup_retry_delay_seconds }};
+  continue;
+  fi;
+  if {{ devture_systemd_docker_base_host_command_docker }} info >/dev/null 2>&1; then
+  exit 0;
+  fi;
+  echo "Failed to query Docker daemon while cleaning up {{ tinc_identifier }}" >&2;
+  exit 1;
+  done;
+  echo "Failed to remove stale container {{ tinc_identifier }} after {{ tinc_container_cleanup_timeout_seconds }} attempts" >&2;
+  exit 1
+
+# The name of this node in the network. It needs to match the `name` of one of the `tinc_hosts` entries.
+# tinc only allows letters, digits and underscores in names.
+tinc_name: ""
+
+# The RSA private key of this node, in PEM format.
+# Its public key goes into the entry for this node in `tinc_hosts`.
+tinc_private_key: ""
+
+# The nodes of the network, this one included. Each of them gets a file in `hosts/`, so it is
+# simplest to keep the same list on every node. Any other file in `hosts/` (e.g. of a node removed
+# from the list) is deleted, which stops this node from accepting connections from that node.
+#
+# Each entry takes:
+# - `name`: the name of the node
+# - `public_key`: its RSA public key, in PEM format
+# - `addresses` (optional): where other nodes can reach it, as "<address>" or "<address> <port>" (port 655 if not specified).
+#   Leave it out for a node which other nodes cannot reach (e.g. behind NAT). Such a node still connects to others itself.
+# - `subnets` (optional): the subnets of the VPN which the node owns, e.g. its VPN address (`10.10.0.1/32`)
+#   and any network behind it (`192.168.1.0/24`). Packets for them are sent to this node.
+# - `additional_configuration` (optional): other host configuration variables for the node, e.g. `IndirectData = yes`
+#
+# Example:
+# tinc_hosts:
+#   - name: alpha
+#     addresses:
+#       - alpha.example.com
+#     subnets:
+#       - 10.10.0.1/32
+#     public_key: |
+#       -----BEGIN PUBLIC KEY-----
+#       ...
+#       -----END PUBLIC KEY-----
+#   - name: beta
+#     subnets:
+#       - 10.10.0.2/32
+#       - 192.168.2.0/24
+#     public_key: |
+#       ...
+# Documentation: https://www.tinc-vpn.org/documentation/Host-configuration-variables.html
+tinc_hosts: []
+
+# The nodes this node connects to (`ConnectTo`).
+# By default, every other node with `addresses`, which makes a full mesh.
+# For a hub-and-spoke network, set the hub(s) on the other nodes, and `[]` on the hubs.
+tinc_connect_to: "{{ tinc_hosts | rejectattr('name', 'equalto', tinc_name) | selectattr('addresses', 'defined') | selectattr('addresses') | map(attribute='name') | list }}"
+
+# The mode tinc runs in:
+# - `router`: forwards IP packets to the node owning the subnet they are addressed to
+# - `switch`: forwards Ethernet frames, learning which node owns which MAC address
+# - `hub`: forwards Ethernet frames to every node
+tinc_mode: router
+
+# The name of the VPN network interface. At most 15 characters.
+tinc_interface: "{{ tinc_identifier }}"
+
+# Addresses (in CIDR notation) which `tinc-up` gives the VPN interface.
+# The prefix length decides what gets sent into the VPN: `10.10.0.1/24` sends all of `10.10.0.0/24`.
+tinc_interface_addresses: []
+
+# Additional routes which `tinc-up` adds through the VPN interface, e.g. `192.168.2.0/24` for a network behind another node.
+tinc_interface_routes: []
+
+# Additional shell commands for `tinc-up` (after the interface is set up) and `tinc-down` (before it is taken down).
+# The interface's name is in `$INTERFACE`.
+tinc_up_additional_commands: ""
+tinc_down_additional_commands: ""
+
+# Additional configuration for `tinc.conf`
+# Documentation: https://www.tinc-vpn.org/documentation/Main-configuration-variables.html
+#
+# Example:
+# tinc_additional_configuration: |
+#   AddressFamily = ipv4
+#   PingInterval = 30
+tinc_additional_configuration: ""
+
+# Specify the timezone
+tinc_environment_variables_tz: UTC
+
+# Additional environment variables.
+tinc_environment_variables_additional_variables: ""
+
+# tinc_restart_necessary controls whether the tinc systemd
+# service will be restarted (when true) or merely started (when false) by the
+# systemd service manager role (when conditional restart is enabled).
+#
+# This value is automatically computed during installation based on whether
+# any configuration files, the systemd service file, or the container image changed.
+# The default of `false` means "no restart needed" — appropriate when the role's
+# installation tasks haven't run (e.g., due to --tags skipping them).
+tinc_restart_necessary: false

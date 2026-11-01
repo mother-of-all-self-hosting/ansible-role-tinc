@@ -1,0 +1,15 @@
+{#
+SPDX-FileCopyrightText: 2024-2026 spatterlight
+
+SPDX-License-Identifier: AGPL-3.0-or-later
+#}
+# tinc.conf - tinc main configuration file
+
+Name = {{ tinc_name }}
+Mode = {{ tinc_mode }}
+Interface = {{ tinc_interface }}
+{% for name in tinc_connect_to %}
+ConnectTo = {{ name }}
+{% endfor %}
+
+{{ tinc_additional_configuration }}
