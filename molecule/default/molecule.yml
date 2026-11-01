@@ -118,7 +118,10 @@ provisioner:
 
         tinc_interface_addresses:
           - 10.255.0.1/24
+        # The first route is already there through the interface address. It
+        # must not keep tinc-up from adding the second one.
         tinc_interface_routes:
+          - 10.255.0.0/24
           - 10.255.2.0/24
 
         # Observable in the log: without it, tincd also listens on `::`.

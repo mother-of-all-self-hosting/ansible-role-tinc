@@ -9,10 +9,12 @@ name: Check container image
 on:  # yamllint disable-line rule:truthy
   push:
     paths:
+      - .github/workflows/check-image.yml
       - Dockerfile
       - bin/smoke-test.sh
   pull_request:
     paths:
+      - .github/workflows/check-image.yml
       - Dockerfile
       - bin/smoke-test.sh
 

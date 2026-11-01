@@ -8,10 +8,10 @@ set -e
 
 ip link set "$INTERFACE" up
 {% for address in tinc_interface_addresses %}
-ip address add {{ address }} dev "$INTERFACE"
+ip address replace {{ address }} dev "$INTERFACE"
 {% endfor %}
 {% for route in tinc_interface_routes %}
-ip route add {{ route }} dev "$INTERFACE"
+ip route replace {{ route }} dev "$INTERFACE"
 {% endfor %}
 {% if tinc_up_additional_commands %}
 

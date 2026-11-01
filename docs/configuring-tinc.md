@@ -108,6 +108,8 @@ tinc_container_network: host
 
 The VPN interface is then created on the host. The role does not touch the firewall, so open `655/tcp` and `655/udp` yourself. With the default network, the role publishes them on the host.
 
+If you publish them on another host port with `tinc_container_host_bind_port_tcp` and `tinc_container_host_bind_port_udp`, add that port to the node's `addresses` (e.g. `alpha.example.com 6655`), so that the other nodes connect to it.
+
 ### Select the topology
 
 - **Full mesh**: the default. Every node connects to every other node which has `addresses`.

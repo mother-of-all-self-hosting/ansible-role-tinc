@@ -19,6 +19,13 @@
     - tinc_name
     - tinc_private_key
 
+- name: Fail if a tinc node name is invalid
+  ansible.builtin.fail:
+    msg: >-
+      `{{ item }}` in `tinc_hosts` is not a valid tinc node name. Only letters, digits and underscores are allowed.
+  when: item | string is not match('^[A-Za-z0-9_]+$')
+  with_items: "{{ tinc_hosts | map(attribute='name') | list }}"
+
 - name: Fail if this node is missing from tinc_hosts
   ansible.builtin.fail:
     msg: >-
