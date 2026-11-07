@@ -8,7 +8,7 @@
 # CI publishes it as `ghcr.io/mother-of-all-self-hosting/ansible-role-tinc:<TINC_VERSION>-<release>`
 # (see `.github/workflows/release-image.yml`), and the role builds it itself when `tinc_container_image_self_build` is enabled.
 
-FROM docker.io/alpine:3.24.3 AS build
+FROM docker.io/alpine:3.24.4 AS build
 
 # tinc 1.0.37 is expected to be the last release of tinc 1.0, so nothing tracks it for updates.
 # Moving to another release means changing both values, the checksum being the SHA-512 of the release tarball.
@@ -33,7 +33,7 @@ RUN wget -q -O tinc.tar.gz "https://www.tinc-vpn.org/packages/tinc-${TINC_VERSIO
     make && \
     make DESTDIR=/install install
 
-FROM docker.io/alpine:3.24.3
+FROM docker.io/alpine:3.24.4
 
 # iproute2 gives the scripts tinc runs (`tinc-up`, `tinc-down`) the full `ip` command instead of BusyBox's.
 RUN apk add --no-cache iproute2 libcrypto3 lzo zlib
