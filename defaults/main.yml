@@ -24,7 +24,7 @@ tinc_config_path: "{{ tinc_base_path }}/config"
 # The container image is built from the `Dockerfile` of this role's repository, and published with tags
 # made of the tinc version and an image release number (see `bin/compute-next-image-tag.sh`).
 # renovate: datasource=docker depName=ghcr.io/mother-of-all-self-hosting/ansible-role-tinc versioning=loose
-tinc_version: 1.0.37-0
+tinc_version: 1.0.37-1
 
 tinc_uid: ""
 tinc_gid: ""
