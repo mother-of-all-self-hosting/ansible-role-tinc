@@ -24,7 +24,7 @@ permissions:
 jobs:
   build:
     name: Build and smoke-test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     # Same-repository pull requests already run via the push event;
     # run pull_request jobs only for pull requests from forks.
